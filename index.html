@@ -364,6 +364,10 @@
   tbody tr:hover { background: var(--surface2); }
   tbody tr.fadeout { opacity: 0; transform: translateX(30px); }
   tbody tr.arrived-row { opacity: 0.52; }
+  tbody tr.editing-row { background: rgba(139,111,78,0.07) !important; outline: 2px solid var(--accent); outline-offset: -2px; }
+  tbody tr:hover { background: var(--surface2); }
+
+  .tracking-text { cursor: text; }
 
   td {
     padding: 11px 12px; font-size: 13px;
@@ -911,14 +915,13 @@ function toggleCarrierPanel() {
 }
 
 // ══════════════════════════════════════════════════════════
-// 発注データ 保存
+// 発注データ 保存 / 更新
 // ══════════════════════════════════════════════════════════
 function saveRecord() {
   const itemName = document.getElementById("f_itemName").value.trim();
   if (!itemName) { alert("商品名を入力してください"); return; }
 
-  const record = {
-    id:             Date.now(),
+  const fields = {
     orderDate:      document.getElementById("f_orderDate").value,
     maker:          document.getElementById("f_maker").value,
     itemName,
@@ -931,17 +934,29 @@ function saveRecord() {
   };
 
   const data = stLoad(KEY_ORDERS, []);
-  data.push(record);
-  stSave(KEY_ORDERS, data);
+
+  if (_editingId !== null) {
+    // 更新モード
+    const idx = data.findIndex(r => r.id === _editingId);
+    if (idx !== -1) Object.assign(data[idx], fields);
+    stSave(KEY_ORDERS, data);
+    showToast("✎ 更新しました");
+    clearEditMode();
+  } else {
+    // 新規登録モード
+    data.push({ id: Date.now(), ...fields });
+    stSave(KEY_ORDERS, data);
+    showToast("✔ 保存しました");
+  }
 
   // フォームリセット
   document.getElementById("f_itemName").value = "";
   document.getElementById("f_qty").value = "";
   document.getElementById("f_trackingNumber").value = "";
   document.getElementById("f_memo").value = "";
+  document.getElementById("f_arrivalDate").value = "";
   document.querySelector('input[name="f_status"][value="未発送"]').checked = true;
 
-  showToast("✔ 保存しました");
   renderTable();
 }
 
@@ -1040,16 +1055,21 @@ function renderTable() {
 
   tbody.innerHTML = filtered.map(r => {
 
-    // 送り状番号セル
-    const trackCell = r.trackingNumber
-      ? `<span class="tracking-num"
-             title="右クリックでコピー"
-             oncontextmenu="copyTracking(event,'${escHtml(r.trackingNumber)}')"
-           >${escHtml(r.trackingNumber)}</span>`
-      : `<span class="tracking-empty">—</span>`;
+    // 送り状番号セル（インライン編集可能）
+    const trackCell = `
+      <div class="memo-cell">
+        <span class="tracking-text ${r.trackingNumber ? 'tracking-num' : 'tracking-empty'}"
+              title="${r.trackingNumber ? '右クリックでコピー / クリックで編集' : 'クリックして入力'}"
+              onclick="startTrackingEdit(this, ${r.id})"
+              oncontextmenu="${r.trackingNumber ? `copyTracking(event,'${escHtml(r.trackingNumber)}')` : ''}"
+        >${escHtml(r.trackingNumber || "—")}</span>
+        <input class="memo-input" type="text" value="${escHtml(r.trackingNumber||'')}"
+               placeholder="送り状番号を入力"
+               onblur="saveTracking(this, ${r.id})"
+               onkeydown="if(event.key==='Enter'||event.key==='Escape')this.blur()">
+      </div>`;
 
-    // 追跡ボタン（送り状番号がある行のみ表示）
-    // → URLに番号が埋め込まれた状態で新規タブを開く
+    // 追跡ボタン
     const trackBtn = r.trackingNumber
       ? `<button class="btn-track"
              onclick="openTracking('${escHtml(r.company)}','${escHtml(r.trackingNumber)}')"
@@ -1068,23 +1088,24 @@ function renderTable() {
       : `<span class="td-arrival undecided">未定</span>`;
 
     return `
-      <tr data-id="${r.id}" class="${r.status === '到着' ? 'arrived-row' : ''}">
+      <tr data-id="${r.id}" class="${r.status === '到着' ? 'arrived-row' : ''}" style="cursor:pointer;"
+          onclick="loadRecordToForm(${r.id}, event)">
         <td class="td-date">${r.orderDate || "—"}</td>
         <td class="td-maker" title="${escHtml(r.maker||'')}">${escHtml(r.maker || "—")}</td>
         <td class="td-item" title="${escHtml(r.itemName)}">${escHtml(r.itemName)}</td>
         <td style="font-size:13px;text-align:center;color:var(--text);">${r.qty ? escHtml(r.qty) : '<span style="color:var(--text-dim)">—</span>'}</td>
         <td>${arrCell}</td>
-        <td>${trackCell}</td>
+        <td onclick="event.stopPropagation()">${trackCell}</td>
         <td class="td-carrier" title="${escHtml(r.company)}">${escHtml(r.company)}</td>
         <td><span class="badge badge-${r.status}">${r.status}</span></td>
-        <td class="memo-cell">
+        <td class="memo-cell" onclick="event.stopPropagation()">
           <span class="memo-text" title="${escHtml(r.memo||'')}"
                 onclick="startMemoEdit(this, ${r.id})">${escHtml(r.memo || "")}</span>
           <input class="memo-input" type="text" value="${escHtml(r.memo||'')}"
                  onblur="saveMemo(this, ${r.id})"
                  onkeydown="if(event.key==='Enter'||event.key==='Escape')this.blur()">
         </td>
-        <td class="ops-cell">
+        <td class="ops-cell" onclick="event.stopPropagation()">
           <div class="ops-inner">
             ${trackBtn}
             <button class="btn-status" onclick="cycleStatus(${r.id})" title="ステータスを変更">
@@ -1103,6 +1124,96 @@ function renderTable() {
         </td>
       </tr>`;
   }).join("");
+}
+
+// ══════════════════════════════════════════════════════════
+// 送り状番号インライン編集
+// ══════════════════════════════════════════════════════════
+function startTrackingEdit(el, id) {
+  const cell = el.closest(".memo-cell");
+  const input = cell.querySelector(".memo-input");
+  el.style.display = "none";
+  input.classList.add("active");
+  input.focus();
+  input.select();
+}
+
+function saveTracking(inputEl, id) {
+  const newVal = inputEl.value.trim();
+  const data = stLoad(KEY_ORDERS, []);
+  const rec = data.find(r => r.id === id);
+  if (rec) {
+    rec.trackingNumber = newVal;
+    stSave(KEY_ORDERS, data);
+  }
+  inputEl.classList.remove("active");
+  const textEl = inputEl.previousElementSibling;
+  textEl.style.display = "";
+  textEl.textContent = newVal || "—";
+  textEl.className = `tracking-text ${newVal ? 'tracking-num' : 'tracking-empty'}`;
+  renderTable();
+}
+
+// ══════════════════════════════════════════════════════════
+// 行クリック → フォームに読み込み（編集モード）
+// ══════════════════════════════════════════════════════════
+let _editingId = null;
+
+function loadRecordToForm(id, e) {
+  // ボタン・入力欄のクリックは無視
+  if (e.target.closest("button,input,select,a,.memo-cell")) return;
+
+  const data = stLoad(KEY_ORDERS, []);
+  const rec = data.find(r => r.id === id);
+  if (!rec) return;
+
+  _editingId = id;
+
+  // フォームパネルを開く
+  const body = document.getElementById("formBody");
+  const btn  = document.getElementById("formToggleBtn");
+  body.classList.add("open");
+  btn.classList.add("open");
+
+  // 値をセット
+  document.getElementById("f_orderDate").value      = rec.orderDate || "";
+  document.getElementById("f_itemName").value        = rec.itemName || "";
+  document.getElementById("f_qty").value             = rec.qty || "";
+  document.getElementById("f_arrivalDate").value     = rec.arrivalDate || "";
+  document.getElementById("f_trackingNumber").value  = rec.trackingNumber || "";
+  document.getElementById("f_memo").value            = rec.memo || "";
+
+  // select：メーカー
+  const makerSel = document.getElementById("f_maker");
+  if ([...makerSel.options].some(o => o.value === rec.maker)) makerSel.value = rec.maker;
+
+  // select：配送会社
+  const companySel = document.getElementById("f_company");
+  if ([...companySel.options].some(o => o.value === rec.company)) companySel.value = rec.company;
+
+  // ステータス
+  const radio = document.querySelector(`input[name="f_status"][value="${rec.status}"]`);
+  if (radio) radio.checked = true;
+
+  // 保存ボタンを「更新」モードに
+  const saveBtn = document.querySelector(".btn-save");
+  saveBtn.textContent = "✎ 更新する";
+  saveBtn.style.background = "linear-gradient(135deg, #4a7c59, #2d5a3d)";
+
+  // 行をハイライト
+  document.querySelectorAll("tr.editing-row").forEach(r => r.classList.remove("editing-row"));
+  document.querySelector(`tr[data-id="${id}"]`)?.classList.add("editing-row");
+
+  // フォームまでスクロール
+  document.getElementById("formBody").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function clearEditMode() {
+  _editingId = null;
+  const saveBtn = document.querySelector(".btn-save");
+  saveBtn.textContent = "＋ 保存する";
+  saveBtn.style.background = "";
+  document.querySelectorAll("tr.editing-row").forEach(r => r.classList.remove("editing-row"));
 }
 
 // ══════════════════════════════════════════════════════════
