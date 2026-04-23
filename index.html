@@ -47,17 +47,22 @@
     color: var(--text);
     min-height: 100vh;
     padding: 20px;
+    padding-top: 86px;
     line-height: 1.6;
   }
 
   /* ══ ヘッダー ══ */
   .header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 2px 12px rgba(100,80,50,0.08);
     display: flex;
     align-items: center;
     gap: 14px;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
     flex-wrap: wrap;
   }
   .header-icon {
@@ -517,59 +522,64 @@
 <!-- ══ 入力フォーム + メーカー管理 ══ -->
 <div class="main-grid">
 
-  <!-- 左：新規登録フォーム -->
+  <!-- 左：新規登録フォーム（トグル・デフォルト開き） -->
   <div class="panel">
-    <div class="panel-title">新規登録</div>
-    <div class="input-grid">
-      <div class="field">
-        <label>発注日</label>
-        <input type="date" id="f_orderDate">
-      </div>
-      <div class="field">
-        <label>発注メーカー</label>
-        <select id="f_maker"></select>
-      </div>
-      <div class="field" style="grid-column: span 2; display: grid; grid-template-columns: 1fr 80px; gap: 8px; align-items: end;">
-        <div class="field" style="gap:4px;">
-          <label>商品名 <span style="color:var(--red);font-size:9px;font-weight:400;">必須</span></label>
-          <input type="text" id="f_itemName" placeholder="商品名を入力">
+    <button class="maker-toggle-btn open" id="formToggleBtn" onclick="toggleFormPanel()">
+      <span class="maker-toggle-chevron">▼</span>
+      新規登録
+    </button>
+    <div class="maker-body open" id="formBody">
+      <div class="input-grid" style="margin-top:14px;">
+        <div class="field">
+          <label>発注日</label>
+          <input type="date" id="f_orderDate">
         </div>
-        <div class="field" style="gap:4px;">
-          <label>数量</label>
-          <input type="number" id="f_qty" placeholder="1" min="1" style="text-align:center;">
+        <div class="field">
+          <label>発注メーカー</label>
+          <select id="f_maker"></select>
+        </div>
+        <div class="field" style="grid-column: span 2; display: grid; grid-template-columns: 1fr 80px; gap: 8px; align-items: end;">
+          <div class="field" style="gap:4px;">
+            <label>商品名 <span style="color:var(--red);font-size:9px;font-weight:400;">必須</span></label>
+            <input type="text" id="f_itemName" placeholder="商品名を入力">
+          </div>
+          <div class="field" style="gap:4px;">
+            <label>数量</label>
+            <input type="number" id="f_qty" placeholder="1" min="1" style="text-align:center;">
+          </div>
+        </div>
+        <div class="field" style="grid-column: span 2;">
+          <label>備考</label>
+          <input type="text" id="f_memo" placeholder="自由メモ（任意）">
+        </div>
+        <div class="field">
+          <label>入荷予定日</label>
+          <input type="date" id="f_arrivalDate">
+        </div>
+        <div class="field">
+          <label>送り状番号</label>
+          <input type="text" id="f_trackingNumber" placeholder="例：1234-5678-9012">
+        </div>
+        <div class="field">
+          <label>配送会社</label>
+          <select id="f_company"></select>
+        </div>
+        <div class="field">
+          <label>ステータス</label>
+          <div class="status-group">
+            <input class="status-radio" type="radio" name="f_status" id="s1" value="未発送" checked>
+            <label class="status-label" for="s1" data-s="未発送">未発送</label>
+            <input class="status-radio" type="radio" name="f_status" id="s2" value="発送済">
+            <label class="status-label" for="s2" data-s="発送済">発送済</label>
+            <input class="status-radio" type="radio" name="f_status" id="s3" value="到着">
+            <label class="status-label" for="s3" data-s="到着">到着</label>
+          </div>
         </div>
       </div>
-      <div class="field" style="grid-column: span 2;">
-        <label>備考</label>
-        <input type="text" id="f_memo" placeholder="自由メモ（任意）">
+      <div class="input-actions">
+        <button class="btn-save" onclick="saveRecord()">＋ 保存する</button>
+        <span style="font-size:11px;color:var(--text-dim);">Ctrl+Enter でも保存</span>
       </div>
-      <div class="field">
-        <label>入荷予定日</label>
-        <input type="date" id="f_arrivalDate">
-      </div>
-      <div class="field">
-        <label>送り状番号</label>
-        <input type="text" id="f_trackingNumber" placeholder="例：1234-5678-9012">
-      </div>
-      <div class="field">
-        <label>配送会社</label>
-        <select id="f_company"></select>
-      </div>
-      <div class="field">
-        <label>ステータス</label>
-        <div class="status-group">
-          <input class="status-radio" type="radio" name="f_status" id="s1" value="未発送" checked>
-          <label class="status-label" for="s1" data-s="未発送">未発送</label>
-          <input class="status-radio" type="radio" name="f_status" id="s2" value="発送済">
-          <label class="status-label" for="s2" data-s="発送済">発送済</label>
-          <input class="status-radio" type="radio" name="f_status" id="s3" value="到着">
-          <label class="status-label" for="s3" data-s="到着">到着</label>
-        </div>
-      </div>
-    </div>
-    <div class="input-actions">
-      <button class="btn-save" onclick="saveRecord()">＋ 保存する</button>
-      <span style="font-size:11px;color:var(--text-dim);">Ctrl+Enter でも保存</span>
     </div>
   </div>
 
@@ -798,6 +808,20 @@ function deleteMaker(index) {
   stSave(KEY_MAKERS, makers);
   renderMakers();
   showToast(`🗑 "${name}" を削除しました`);
+}
+
+// ══════════════════════════════════════════════════════════
+// 新規登録フォーム トグル
+// ══════════════════════════════════════════════════════════
+function toggleFormPanel() {
+  const btn  = document.getElementById("formToggleBtn");
+  const body = document.getElementById("formBody");
+  const isOpen = body.classList.contains("open");
+  if (isOpen) {
+    body.classList.remove("open"); btn.classList.remove("open");
+  } else {
+    body.classList.add("open"); btn.classList.add("open");
+  }
 }
 
 // ══════════════════════════════════════════════════════════
