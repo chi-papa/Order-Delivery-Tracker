@@ -32,6 +32,8 @@
     --gray-bg:  rgba(122,112,104,0.10);
     --red:      #b94040;
     --red-bg:   rgba(185,64,64,0.10);
+    --blue:     #2a6496;
+    --blue-bg:  rgba(42,100,150,0.10);
     --radius: 10px;
     --radius-sm: 6px;
     --shadow: 0 2px 16px rgba(100,80,50,0.10), 0 1px 4px rgba(100,80,50,0.08);
@@ -338,7 +340,7 @@
     border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
   }
   .table-scroll { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; min-width: 1100px; table-layout: fixed; }
+  table { width: 100%; border-collapse: collapse; min-width: 1200px; table-layout: fixed; }
   thead th {
     background: var(--surface2); padding: 10px 12px;
     font-size: 10px; font-weight: 700; color: var(--text-muted);
@@ -354,7 +356,7 @@
   th:nth-child(7) { width: 100px; }  /* 配送会社 */
   th:nth-child(8) { width:  76px; }  /* 状態 */
   th:nth-child(9) { min-width: 120px; } /* 備考 */
-  th:nth-child(10){ width: 130px; text-align: center; } /* 操作 */
+  th:nth-child(10){ width: 170px; text-align: center; } /* 操作（幅を少し広げた） */
 
   tbody tr {
     border-bottom: 1px solid var(--border);
@@ -404,7 +406,7 @@
 
   /* 操作セル */
   .ops-cell { text-align: center; white-space: nowrap; }
-  .ops-inner { display: inline-flex; align-items: center; gap: 5px; }
+  .ops-inner { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: center; }
 
   .btn-track {
     background: var(--accent-glow); border: 1px solid var(--accent);
@@ -419,6 +421,23 @@
     border-color: var(--accent-dark); box-shadow: 0 2px 8px var(--accent-glow);
   }
   .btn-track:active { transform: scale(0.96); }
+
+  /* ══ Outlookカレンダーボタン ══ */
+  .btn-calendar {
+    background: var(--blue-bg);
+    border: 1px solid var(--blue);
+    color: var(--blue);
+    border-radius: var(--radius-sm);
+    font-size: 11px; font-family: var(--font); font-weight: 700;
+    padding: 5px 9px; cursor: pointer;
+    transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;
+    white-space: nowrap;
+  }
+  .btn-calendar:hover {
+    background: var(--blue); color: #fff;
+    box-shadow: 0 2px 8px rgba(42,100,150,0.25);
+  }
+  .btn-calendar:active { transform: scale(0.96); }
 
   .btn-status {
     background: transparent; border: 1px solid var(--border);
@@ -671,10 +690,7 @@
 <script>
 // ══════════════════════════════════════════════════════════
 // 配送会社マスタ
-// {num} に送り状番号が埋め込まれた状態でURLが開く
-// null の会社は Google検索（番号入り）にフォールバック
 // ══════════════════════════════════════════════════════════
-// trackings.jp 経由で全社対応（https://trackings.jp/toi/{ID}/{伝票番号}）
 const CARRIERS = {
   "ヤマト運輸":     "yamato",
   "佐川急便":       "sagawa",
@@ -725,7 +741,6 @@ let currentFilter = "全て";
 function init() {
   document.getElementById("f_orderDate").value = todayStr();
 
-  // ユーザー名表示
   const uname = stLoad(KEY_USER, "");
   document.getElementById("userNameText").textContent = uname || "名前未設定";
 
@@ -781,7 +796,6 @@ function renderMakers() {
       </div>`).join("");
   }
 
-  // フォームの select も同期
   const sel = document.getElementById("f_maker");
   const prev = sel.value;
   sel.innerHTML = "";
@@ -871,12 +885,18 @@ function renderCarriers() {
   const sel = document.getElementById("f_company");
   const prev = sel.value;
   sel.innerHTML = "";
+  // 先頭に空（未選択）オプションを追加
+  const emptyOpt = document.createElement("option");
+  emptyOpt.value = "";
+  emptyOpt.textContent = "— 未選択 —";
+  sel.appendChild(emptyOpt);
   carriers.forEach(c => {
     const o = document.createElement("option");
     o.value = o.textContent = c.name;
     sel.appendChild(o);
   });
   if (prev && carriers.find(c => c.name === prev)) sel.value = prev;
+  else sel.value = "";
 }
 
 function addCarrier() {
@@ -936,20 +956,17 @@ function saveRecord() {
   const data = stLoad(KEY_ORDERS, []);
 
   if (_editingId !== null) {
-    // 更新モード
     const idx = data.findIndex(r => r.id === _editingId);
     if (idx !== -1) Object.assign(data[idx], fields);
     stSave(KEY_ORDERS, data);
     showToast("✎ 更新しました");
     clearEditMode();
   } else {
-    // 新規登録モード
     data.push({ id: Date.now(), ...fields });
     stSave(KEY_ORDERS, data);
     showToast("✔ 保存しました");
   }
 
-  // フォームリセット
   document.getElementById("f_itemName").value = "";
   document.getElementById("f_qty").value = "";
   document.getElementById("f_trackingNumber").value = "";
@@ -1003,8 +1020,6 @@ function setFilter(filter, btn) {
 
 // ══════════════════════════════════════════════════════════
 // 追跡URL生成（trackings.jp 経由）
-// https://trackings.jp/toi/{会社ID}/{伝票番号}
-// IDが空またはなければGoogleフォールバック
 // ══════════════════════════════════════════════════════════
 function getTrackingURL(company, num) {
   if (!num) return null;
@@ -1018,13 +1033,67 @@ function getTrackingURL(company, num) {
 }
 
 // ══════════════════════════════════════════════════════════
+// Outlook カレンダーに予定を追加（発注日ベース）
+//
+// Web版Outlookの新規予定作成URLを開く。
+// subject : 「【発注】商品名（メーカー）× 数量」
+// body    : 発注日・入荷予定日・送り状番号・備考を整形して渡す
+// startdt / enddt : 発注日の終日予定（Outlook Webは "allday" 相当）
+//
+// ステータスが「到着」の場合はボタン自体を非表示にするため
+// この関数が呼ばれることはないが、念のためガードを入れる。
+// ══════════════════════════════════════════════════════════
+function openOutlookCalendar(id) {
+  const data = stLoad(KEY_ORDERS, []);
+  const r = data.find(rec => rec.id === id);
+  if (!r || r.status === "到着") return;
+
+  // 発注日（なければ今日）を使用
+  const dateStr = r.orderDate || todayStr();
+
+  // Outlook Web の新規予定作成 URL
+  // startdt / enddt は ISO 8601 形式（終日扱いにするため日付のみ）
+  // path=/calendar/action/compose で新規予定画面を直接開く
+  const subject = encodeURIComponent(
+    `【発注】${r.itemName}（${r.maker}）` + (r.qty ? ` × ${r.qty}` : "")
+  );
+
+  const bodyLines = [
+    `■ 発注日　　: ${r.orderDate || "—"}`,
+    `■ 入荷予定日: ${r.arrivalDate || "未定"}`,
+    `■ メーカー　: ${r.maker || "—"}`,
+    `■ 数量　　　: ${r.qty || "—"}`,
+    `■ 配送会社　: ${r.company || "—"}`,
+    `■ 送り状番号: ${r.trackingNumber || "—"}`,
+    `■ 備考　　　: ${r.memo || "—"}`,
+    "",
+    "※ 発注・配送メモアプリより自動生成",
+  ];
+  const body = encodeURIComponent(bodyLines.join("\n"));
+
+  // 終日予定: startdt=YYYY-MM-DD, enddt=翌日
+  const start = dateStr;
+  const endDate = new Date(dateStr);
+  endDate.setDate(endDate.getDate() + 1);
+  const end = endDate.toISOString().slice(0, 10);
+
+  const url = `https://outlook.office.com/calendar/action/compose`
+    + `?subject=${subject}`
+    + `&body=${body}`
+    + `&startdt=${start}`
+    + `&enddt=${end}`;
+
+  window.open(url, "_blank");
+  showToast("📅 Outlookの予定作成画面を開きました");
+}
+
+// ══════════════════════════════════════════════════════════
 // テーブルレンダリング
 // ══════════════════════════════════════════════════════════
 function renderTable() {
   const rawData = stLoad(KEY_ORDERS, []);
   const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
 
-  // ソート：到着を末尾、発注日降順
   const sorted = [...rawData].sort((a, b) => {
     const aA = a.status === "到着" ? 1 : 0;
     const bA = b.status === "到着" ? 1 : 0;
@@ -1083,6 +1152,21 @@ function renderTable() {
          </button>`
       : ``;
 
+    // ══ Outlookカレンダーボタン（到着済みは非表示） ══
+    const calBtn = r.status !== "到着"
+      ? `<button class="btn-calendar"
+             onclick="openOutlookCalendar(${r.id})"
+             title="発注日をOutlookカレンダーに追加">
+           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+             <line x1="16" y1="2" x2="16" y2="6"/>
+             <line x1="8" y1="2" x2="8" y2="6"/>
+             <line x1="3" y1="10" x2="21" y2="10"/>
+           </svg>
+           予定
+         </button>`
+      : ``;
+
     const arrCell = r.arrivalDate
       ? `<span class="td-arrival">${r.arrivalDate}</span>`
       : `<span class="td-arrival undecided">未定</span>`;
@@ -1096,7 +1180,7 @@ function renderTable() {
         <td style="font-size:13px;text-align:center;color:var(--text);">${r.qty ? escHtml(r.qty) : '<span style="color:var(--text-dim)">—</span>'}</td>
         <td>${arrCell}</td>
         <td onclick="event.stopPropagation()">${trackCell}</td>
-        <td class="td-carrier" title="${escHtml(r.company)}">${escHtml(r.company)}</td>
+        <td class="td-carrier" title="${escHtml(r.company)}">${r.company ? escHtml(r.company) : '<span style="color:var(--text-dim)">—</span>'}</td>
         <td><span class="badge badge-${r.status}">${r.status}</span></td>
         <td class="memo-cell" onclick="event.stopPropagation()">
           <span class="memo-text" title="${escHtml(r.memo||'')}"
@@ -1108,6 +1192,7 @@ function renderTable() {
         <td class="ops-cell" onclick="event.stopPropagation()">
           <div class="ops-inner">
             ${trackBtn}
+            ${calBtn}
             <button class="btn-status" onclick="cycleStatus(${r.id})" title="ステータスを変更">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.96"/>
@@ -1160,7 +1245,6 @@ function saveTracking(inputEl, id) {
 let _editingId = null;
 
 function loadRecordToForm(id, e) {
-  // ボタン・入力欄のクリックは無視
   if (e.target.closest("button,input,select,a,.memo-cell")) return;
 
   const data = stLoad(KEY_ORDERS, []);
@@ -1169,13 +1253,11 @@ function loadRecordToForm(id, e) {
 
   _editingId = id;
 
-  // フォームパネルを開く
   const body = document.getElementById("formBody");
   const btn  = document.getElementById("formToggleBtn");
   body.classList.add("open");
   btn.classList.add("open");
 
-  // 値をセット
   document.getElementById("f_orderDate").value      = rec.orderDate || "";
   document.getElementById("f_itemName").value        = rec.itemName || "";
   document.getElementById("f_qty").value             = rec.qty || "";
@@ -1183,28 +1265,23 @@ function loadRecordToForm(id, e) {
   document.getElementById("f_trackingNumber").value  = rec.trackingNumber || "";
   document.getElementById("f_memo").value            = rec.memo || "";
 
-  // select：メーカー
   const makerSel = document.getElementById("f_maker");
   if ([...makerSel.options].some(o => o.value === rec.maker)) makerSel.value = rec.maker;
 
-  // select：配送会社
   const companySel = document.getElementById("f_company");
-  if ([...companySel.options].some(o => o.value === rec.company)) companySel.value = rec.company;
+  if (rec.company && [...companySel.options].some(o => o.value === rec.company)) companySel.value = rec.company;
+  else companySel.value = "";
 
-  // ステータス
   const radio = document.querySelector(`input[name="f_status"][value="${rec.status}"]`);
   if (radio) radio.checked = true;
 
-  // 保存ボタンを「更新」モードに
   const saveBtn = document.querySelector(".btn-save");
   saveBtn.textContent = "✎ 更新する";
   saveBtn.style.background = "linear-gradient(135deg, #4a7c59, #2d5a3d)";
 
-  // 行をハイライト
   document.querySelectorAll("tr.editing-row").forEach(r => r.classList.remove("editing-row"));
   document.querySelector(`tr[data-id="${id}"]`)?.classList.add("editing-row");
 
-  // フォームまでスクロール
   document.getElementById("formBody").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -1217,7 +1294,7 @@ function clearEditMode() {
 }
 
 // ══════════════════════════════════════════════════════════
-// 追跡ページを開く（番号埋め込み済URL）
+// 追跡ページを開く
 // ══════════════════════════════════════════════════════════
 function openTracking(company, num) {
   const url = getTrackingURL(company, num);
