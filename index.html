@@ -1033,32 +1033,30 @@ function getTrackingURL(company, num) {
 }
 
 // ══════════════════════════════════════════════════════════
-// Outlook カレンダーに予定を追加（発注日ベース）
+// Outlook カレンダーに予定を追加（.ics ダウンロード方式）
 //
-// Web版Outlookの新規予定作成URLを開く。
-// subject : 「【発注】商品名（メーカー）× 数量」
-// body    : 発注日・入荷予定日・送り状番号・備考を整形して渡す
-// startdt / enddt : 発注日の終日予定（Outlook Webは "allday" 相当）
-//
-// ステータスが「到着」の場合はボタン自体を非表示にするため
-// この関数が呼ばれることはないが、念のためガードを入れる。
+// .ics ファイルを生成してダウンロード。
+// ダブルクリックするだけでデスクトップ版Outlookに予定が追加される。
+// Microsoftアカウント・ネット接続不要。
 // ══════════════════════════════════════════════════════════
 function openOutlookCalendar(id) {
   const data = stLoad(KEY_ORDERS, []);
   const r = data.find(rec => rec.id === id);
   if (!r || r.status === "到着") return;
 
-  // 発注日（なければ今日）を使用
   const dateStr = r.orderDate || todayStr();
 
-  // Outlook Web の新規予定作成 URL
-  // startdt / enddt は ISO 8601 形式（終日扱いにするため日付のみ）
-  // path=/calendar/action/compose で新規予定画面を直接開く
-  const subject = encodeURIComponent(
-    `【発注】${r.itemName}（${r.maker}）` + (r.qty ? ` × ${r.qty}` : "")
-  );
+  // 終日予定: DTSTART/DTEND は VALUE=DATE で日付のみ
+  const dtStart = dateStr.replace(/-/g, "");
+  const endDate = new Date(dateStr);
+  endDate.setDate(endDate.getDate() + 1);
+  const dtEnd = endDate.toISOString().slice(0, 10).replace(/-/g, "");
 
-  const bodyLines = [
+  // 件名
+  const subject = `【発注】${r.itemName}（${r.maker}）` + (r.qty ? ` × ${r.qty}` : "");
+
+  // 本文（.ics の DESCRIPTION は \n でエスケープ）
+  const descLines = [
     `■ 発注日　　: ${r.orderDate || "—"}`,
     `■ 入荷予定日: ${r.arrivalDate || "未定"}`,
     `■ メーカー　: ${r.maker || "—"}`,
@@ -1069,22 +1067,38 @@ function openOutlookCalendar(id) {
     "",
     "※ 発注・配送メモアプリより自動生成",
   ];
-  const body = encodeURIComponent(bodyLines.join("\n"));
+  const description = descLines.join("\\n");
 
-  // 終日予定: startdt=YYYY-MM-DD, enddt=翌日
-  const start = dateStr;
-  const endDate = new Date(dateStr);
-  endDate.setDate(endDate.getDate() + 1);
-  const end = endDate.toISOString().slice(0, 10);
+  // UID：重複しないよう id + タイムスタンプ
+  const uid = `order-${r.id}-${Date.now()}@order-memo`;
 
-  const url = `https://outlook.office.com/calendar/action/compose`
-    + `?subject=${subject}`
-    + `&body=${body}`
-    + `&startdt=${start}`
-    + `&enddt=${end}`;
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//発注配送メモ//JP",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `SUMMARY:${subject}`,
+    `DTSTART;VALUE=DATE:${dtStart}`,
+    `DTEND;VALUE=DATE:${dtEnd}`,
+    `DESCRIPTION:${description}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 
-  window.open(url, "_blank");
-  showToast("📅 Outlookの予定作成画面を開きました");
+  // ダウンロード
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  const safeName = r.itemName.replace(/[\\/:*?"<>|]/g, "_");
+  a.href     = url;
+  a.download = `発注_${safeName}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  showToast("📅 .ics をダウンロードしました。ダブルクリックでOutlookに追加できます");
 }
 
 // ══════════════════════════════════════════════════════════
